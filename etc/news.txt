@@ -1,5 +1,0 @@
-[DotA & Friends Updates]
-* Low-latency GProxy connection active on port 6112.
-* Automated ladder telemetry and custom maps enabled.
-* Join Discord community: https://discord.gg/tbE2dFNRWU
-* Register and manage your handle: https://dotaandfriends.xyz
