@@ -1,0 +1,230 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+
+    min-height: 100vh;
+
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+
+    background:
+        linear-gradient(
+            135deg,
+            #111827,
+            #1f2937
+        );
+
+    color: #ffffff;
+}
+
+
+.page {
+
+    min-height: 100vh;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    padding: 20px;
+}
+
+
+.card {
+
+    width: 100%;
+
+    max-width: 460px;
+
+    background: #ffffff;
+
+    color: #111827;
+
+    border-radius: 12px;
+
+    padding: 40px;
+
+    box-shadow:
+        0 20px 60px
+        rgba(0, 0, 0, 0.35);
+}
+
+
+.logo {
+
+    text-align: center;
+
+    font-size: 32px;
+
+    font-weight: 800;
+
+    margin-bottom: 10px;
+
+    color: #2563eb;
+}
+
+
+h1 {
+
+    text-align: center;
+
+    margin: 0 0 8px;
+
+}
+
+
+.subtitle {
+
+    text-align: center;
+
+    color: #6b7280;
+
+    margin-bottom: 30px;
+}
+
+
+label {
+
+    display: block;
+
+    font-weight: 600;
+
+    margin-top: 18px;
+
+    margin-bottom: 7px;
+}
+
+
+input {
+
+    width: 100%;
+
+    padding: 13px 14px;
+
+    border: 1px solid #d1d5db;
+
+    border-radius: 7px;
+
+    font-size: 15px;
+
+    outline: none;
+}
+
+
+input:focus {
+
+    border-color: #2563eb;
+
+    box-shadow:
+        0 0 0 3px
+        rgba(37, 99, 235, 0.12);
+}
+
+
+.rules {
+
+    margin-top: 20px;
+
+    padding: 15px;
+
+    background: #f3f4f6;
+
+    border-radius: 7px;
+
+    color: #4b5563;
+
+    font-size: 13px;
+
+    line-height: 1.8;
+}
+
+
+button {
+
+    width: 100%;
+
+    margin-top: 25px;
+
+    padding: 14px;
+
+    border: 0;
+
+    border-radius: 7px;
+
+    background: #2563eb;
+
+    color: white;
+
+    font-size: 16px;
+
+    font-weight: 700;
+
+    cursor: pointer;
+}
+
+
+button:hover {
+
+    background: #1d4ed8;
+}
+
+
+.forgot-pw {
+
+    margin-top: 16px;
+
+    text-align: center;
+
+    font-size: 14px;
+}
+
+.forgot-pw a {
+
+    color: #2563eb;
+
+    text-decoration: none;
+}
+
+.forgot-pw a:hover {
+
+    text-decoration: underline;
+}
+
+
+.small {
+
+    margin-top: 14px;
+
+    text-align: center;
+
+    color: #6b7280;
+
+    font-size: 13px;
+}
+
+h1.ok {
+
+    color: #16a34a;
+}
+
+h1.err {
+
+    color: #dc2626;
+}
+
+
+.message {
+
+    margin-top: 18px;
+
+    text-align: center;
+
+    font-size: 14px;
+}
