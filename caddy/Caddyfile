@@ -1,0 +1,39 @@
+{
+    auto_https disable_redirects
+}
+
+dotaandfriends.ddns.net, server.dotaandfriends.xyz {
+    encode zstd gzip
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+    @proxied path /api/* /new/api/* /lobby/* /theme/* /admin*
+    handle @proxied {
+        reverse_proxy web:3000
+    }
+    handle {
+        redir https://dotaandfriends.xyz{uri} 302
+    }
+}
+
+:80 {
+    encode zstd gzip
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+    @proxied path /api/* /new/api/* /lobby/* /theme/* /admin*
+    handle @proxied {
+        reverse_proxy web:3000
+    }
+    handle {
+        respond "DotA and Friends - PvPGN Production Server (138.2.71.11)"
+    }
+}
