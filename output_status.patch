@@ -1,0 +1,6 @@
+--- a/src/bnetd/output.cpp
++++ b/src/bnetd/output.cpp
+@@ -85,7 +85,7 @@
+-			std::fprintf((std::FILE*)data, "game%d=%s,%u,%s\n", number, tag_uint_to_str(clienttag_str, game_get_clienttag(game)), game_get_id(game), game_get_name(game));
++			std::fprintf((std::FILE*)data, "game%d=%s,%u,%s,%s,%u\n", number, tag_uint_to_str(clienttag_str, game_get_clienttag(game)), game_get_id(game), game_get_name(game), game_status_get_str(game_get_status(game)), game_get_count(game));
+ 			number++;

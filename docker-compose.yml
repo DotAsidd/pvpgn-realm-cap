@@ -1,0 +1,188 @@
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: pvpgn-mysql
+    restart: unless-stopped
+    command:
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=64M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=100
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: pvpgn
+      MYSQL_USER: pvpgn
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      pvpgn-network:
+        aliases:
+          - db
+          - mysql
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${MYSQL_ROOT_PASSWORD}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  pvpgn:
+    image: pvpgn-patched:latest
+    container_name: pvpgn-server
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "6112:6112/tcp"
+      - "6112:6112/udp"
+      - "6200:6200/tcp"
+    volumes:
+      - ./pvpgn/etc:/etc/pvpgn
+      - pvpgn_data:/var/pvpgn
+      - ./pvpgn/lua:/var/pvpgn/lua
+      - ./mysql-ca.pem:/etc/ssl/mysql-ca.pem:ro
+    networks:
+      - pvpgn-network
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    container_name: pvpgn-web
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      pvpgn:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: pvpgn
+      DB_USER: pvpgn
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+      APP_BASE_URL: ${APP_BASE_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      MAILJET_API_KEY: ${MAILJET_API_KEY}
+      MAILJET_SECRET_KEY: ${MAILJET_SECRET_KEY}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - pvpgn_data:/var/pvpgn:rw
+      - ./pvpgn/etc:/etc/pvpgn:rw
+    networks:
+      - pvpgn-network
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:latest
+    container_name: pvpgn-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    command: caddy run --config /etc/caddy/Caddyfile
+    depends_on:
+      - web
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - pvpgn-network
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+#  adminer:
+#    image: adminer:latest
+#    container_name: pvpgn-adminer
+#    restart: unless-stopped
+#    depends_on:
+#      mysql:
+#        condition: service_healthy
+#    environment:
+#      ADMINER_DEFAULT_SERVER: mysql
+#      ADMINER_DESIGN: dracula
+#    networks:
+#      - pvpgn-network
+#    mem_limit: 64m
+#    logging:
+#      driver: json-file
+#      options:
+#        max-size: "10m"
+#        max-file: "3"
+
+#  guard:
+#    build:
+#      context: ../guard-container
+#      dockerfile: Dockerfile
+#    container_name: pvpgn-guard
+#    command: ["guard", "/guard.cfg"]
+#    restart: unless-stopped
+#    depends_on:
+#      mysql:
+#        condition: service_healthy
+#      pvpgn:
+#        condition: service_started
+#    networks:
+#      - pvpgn-network
+#    mem_limit: 256m
+#    logging:
+#      driver: json-file
+#      options:
+#        max-size: "10m"
+#        max-file: "3"
+
+networks:
+  pvpgn-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  pvpgn_data:
+  caddy_data:
+  caddy_config:

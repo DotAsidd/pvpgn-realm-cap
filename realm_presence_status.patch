@@ -1,0 +1,248 @@
+diff --git a/src/bnetd/clan.cpp b/src/bnetd/clan.cpp
+index 059818e..1aecbd1 100644
+--- a/src/bnetd/clan.cpp
++++ b/src/bnetd/clan.cpp
+@@ -1105,25 +1105,52 @@ namespace pvpgn
+ 
+ 		extern const char *clanmember_get_online_status_by_connection(t_connection * conn, char *status)
+ 		{
++			static char clan_loc_buf[256];
+ 			if (conn && (conn_get_state(conn) != conn_state_empty))
+ 			{
+ 				t_game *game;
+ 				t_channel *channel;
++				const char *loc = NULL;
+ 				if ((game = conn_get_game(conn)) != NULL)
+ 				{
+ 					if (game_get_flag(game) == game_flag_private)
+ 						(*status) = SERVER_CLAN_MEMBER_PRIVATE_GAME;
+ 					else
+ 						(*status) = SERVER_CLAN_MEMBER_GAME;
+-					return game_get_name(game);
++					loc = game_get_name(game);
+ 				}
+-				if ((channel = conn_get_channel(conn)) != NULL)
++				else if ((channel = conn_get_channel(conn)) != NULL)
+ 				{
+ 					(*status) = SERVER_CLAN_MEMBER_CHANNEL;
+-					return channel_get_name(channel);
++					loc = channel_get_name(channel);
++				}
++				else
++				{
++					(*status) = SERVER_CLAN_MEMBER_ONLINE;
+ 				}
+ 
+-				(*status) = SERVER_CLAN_MEMBER_ONLINE;
++				if (loc)
++				{
++					if (conn_get_dndstr(conn))
++					{
++						std::snprintf(clan_loc_buf, sizeof(clan_loc_buf), "[DND] %s", loc);
++						return clan_loc_buf;
++					}
++					if (conn_get_awaystr(conn))
++					{
++						std::snprintf(clan_loc_buf, sizeof(clan_loc_buf), "[Away] %s", loc);
++						return clan_loc_buf;
++					}
++					return loc;
++				}
++				else if (conn_get_dndstr(conn))
++				{
++					return "[DND]";
++				}
++				else if (conn_get_awaystr(conn))
++				{
++					return "[Away]";
++				}
+ 			}
+ 			else
+ 				(*status) = SERVER_CLAN_MEMBER_OFFLINE;
+diff --git a/src/bnetd/command.cpp b/src/bnetd/command.cpp
+index 534c874..3b8c32a 100644
+--- a/src/bnetd/command.cpp
++++ b/src/bnetd/command.cpp
+@@ -2359,6 +2359,8 @@ namespace pvpgn
+ 				conn_set_awaystr(c, text);
+ 			}
+ 
++			clanmember_on_change_status_by_connection(c);
++			friends_notify_status_change(c);
+ 			return 0;
+ 		}
+ 
+@@ -2386,6 +2388,8 @@ namespace pvpgn
+ 				conn_set_dndstr(c, text);
+ 			}
+ 
++			clanmember_on_change_status_by_connection(c);
++			friends_notify_status_change(c);
+ 			return 0;
+ 		}
+ 
+diff --git a/src/bnetd/friends.cpp b/src/bnetd/friends.cpp
+index 50670be..c0e1af1 100644
+--- a/src/bnetd/friends.cpp
++++ b/src/bnetd/friends.cpp
+@@ -22,6 +22,12 @@
+ #include "compat/strcasecmp.h"
+ #include "common/list.h"
+ #include "common/eventlog.h"
++#include "common/bn_type.h"
++#include "connection.h"
++#include "channel.h"
++#include "game.h"
++#include "common/packet.h"
++#include "common/anongame_protocol.h" 
+ 
+ #include "common/setup_after.h"
+ 
+@@ -375,6 +381,77 @@ namespace pvpgn
+ 			return nullptr;
+ 		}
+ 
+-	}
++		
++		extern int friends_notify_status_change(t_connection * user_c)
++		{
++			if (!user_c) return -1;
++			t_account * user_acc = conn_get_account(user_c);
++			if (!user_acc) return -1;
++
++			t_elem * ccurr;
++			LIST_TRAVERSE(connlist(), ccurr)
++			{
++				t_connection * c = (t_connection *)elem_get_data(ccurr);
++				if (!c || c == user_c || conn_get_class(c) != conn_class_bnet)
++					continue;
++				t_account * acc = conn_get_account(c);
++				if (!acc) continue;
++				t_list * flist = account_get_friends(acc);
++				if (!flist) continue;
++
++				t_elem * fcurr;
++				unsigned char i = 0;
++				LIST_TRAVERSE(flist, fcurr)
++				{
++					t_friend * fr = (t_friend *)elem_get_data(fcurr);
++					if (fr && fr->friendacc == user_acc)
++					{
++						t_packet * rpacket = packet_create(packet_class_bnet);
++						if (!rpacket) break;
++						packet_set_size(rpacket, sizeof(t_server_friendinforeply));
++						packet_set_type(rpacket, SERVER_FRIENDINFOREPLY);
++						bn_byte_set(&rpacket->u.server_friendinforeply.friendnum, i);
++
++						unsigned char type = 0;
++						if (friend_get_mutual(fr))
++							type |= FRIEND_TYPE_MUTUAL;
++						if (conn_get_dndstr(user_c))
++							type |= FRIEND_TYPE_DND;
++						if (conn_get_awaystr(user_c))
++							type |= FRIEND_TYPE_AWAY;
++						bn_byte_set(&rpacket->u.server_friendinforeply.type, type);
++
++						t_game * game;
++						t_channel * channel;
++						if ((game = conn_get_game(user_c)))
++						{
++							if (game_get_flag(game) != game_flag_private)
++								bn_byte_set(&rpacket->u.server_friendinforeply.status, FRIENDSTATUS_PUBLIC_GAME);
++							else
++								bn_byte_set(&rpacket->u.server_friendinforeply.status, FRIENDSTATUS_PRIVATE_GAME);
++							packet_append_string(rpacket, game_get_name(game));
++						}
++						else if ((channel = conn_get_channel(user_c)))
++						{
++							bn_byte_set(&rpacket->u.server_friendinforeply.status, FRIENDSTATUS_CHAT);
++							packet_append_string(rpacket, channel_get_name(channel));
++						}
++						else
++						{
++							bn_byte_set(&rpacket->u.server_friendinforeply.status, FRIENDSTATUS_ONLINE);
++							packet_append_string(rpacket, "");
++						}
++
++						bn_int_set(&rpacket->u.server_friendinforeply.clienttag, conn_get_clienttag(user_c));
++						conn_push_outqueue(c, rpacket);
++						packet_del_ref(rpacket);
++						break;
++					}
++					i++;
++				}
++			}
++			return 0;
++		}
++}
+ 
+ }
+diff --git a/src/bnetd/friends.h b/src/bnetd/friends.h
+index a314ccb..90af2f9 100644
+--- a/src/bnetd/friends.h
++++ b/src/bnetd/friends.h
+@@ -55,6 +55,7 @@ namespace pvpgn
+ 		extern t_friend * friendlist_find_account(t_list *, t_account *);
+ 		extern t_friend * friendlist_find_username(t_list *, const char *);
+ 		extern t_friend * friendlist_find_uid(t_list *, unsigned int);
++		extern int friends_notify_status_change(t_connection * user_c);
+ 
+ #endif
+ 
+diff --git a/src/bnetd/output.cpp b/src/bnetd/output.cpp
+index a4e2cef..32ffe46 100644
+--- a/src/bnetd/output.cpp
++++ b/src/bnetd/output.cpp
+@@ -189,15 +189,20 @@ namespace pvpgn
+ 					conn = (t_connection*)elem_get_data(curr);
+ 					if (conn_get_account(conn))
+ 					{
+-						std::fprintf(fp, "user%d=%s,%s,%s", number, tag_uint_to_str(clienttag_str, conn_get_clienttag(conn)), conn_get_username(conn), conn_get_clientver(conn));
+-
+ 						const char * country = conn_get_country(conn);
+-						if (!country) country = "-";
+-						std::fprintf(fp, ",%s", country);
++						if (!country || !*country) country = "-";
+ 
+-						if ((game = conn_get_game(conn)))
+-							std::fprintf(fp, ",%u", game_get_id(game));
+-						std::fprintf(fp, "\n");
++						game = conn_get_game(conn);
++						unsigned int game_id = game ? game_get_id(game) : 0;
++
++						channel = conn_get_channel(conn);
++						const char * ch_name = channel ? channel_get_name(channel) : "-";
++
++						const char * status = "online";
++						if (conn_get_dndstr(conn)) status = "dnd";
++						else if (conn_get_awaystr(conn)) status = "away";
++
++						std::fprintf(fp, "user%d=%s,%s,%s,%s,%u,%s,%s\n", number, tag_uint_to_str(clienttag_str, conn_get_clienttag(conn)), conn_get_username(conn), conn_get_clientver(conn), country, game_id, ch_name, status);
+ 						number++;
+ 					}
+ 				}
+diff --git a/src/bnetd/sql_common.cpp b/src/bnetd/sql_common.cpp
+index 7307a5b..57d08b3 100644
+--- a/src/bnetd/sql_common.cpp
++++ b/src/bnetd/sql_common.cpp
+@@ -642,7 +642,7 @@ namespace pvpgn
+ 				return -1;
+ 			}
+ 
+-			std::snprintf(query, sizeof(query), "SELECT teamid, size, clienttag, lastgame, member1, member2, member3, member4, wins,losses, xp, level, rank FROM %sarrangedteam WHERE teamid > 0", tab_prefix);
++			std::snprintf(query, sizeof(query), "SELECT teamid, size, clienttag, lastgame, member1, member2, member3, member4, wins,losses, xp, level, `rank` FROM %sarrangedteam WHERE teamid > 0", tab_prefix);
+ 			eventlog(eventlog_level_trace, __FUNCTION__, "{}", query);
+ 			if ((result = sql->query_res(query)) != NULL)
+ 			{
+@@ -750,9 +750,9 @@ namespace pvpgn
+ 				num = std::atol(row[0]);
+ 				sql->free_result(result);
+ 				if (num < 1)
+-					std::snprintf(query, sizeof(query), "INSERT INTO %sarrangedteam (teamid, size, clienttag, lastgame, member1, member2, member3, member4, wins,losses, xp, level, rank) VALUES('%u', '%c', '%s', '%u', '%u', '%u', '%u', '%u', '%d', '%d', '%d', '%d', '%d')", tab_prefix, team->teamid, team->size + '0', clienttag_uint_to_str(team->clienttag), (unsigned int)team->lastgame, team->teammembers[0], team->teammembers[1], team->teammembers[2], team->teammembers[3], team->wins, team->losses, team->xp, team->level, team->rank);
++					std::snprintf(query, sizeof(query), "INSERT INTO %sarrangedteam (teamid, size, clienttag, lastgame, member1, member2, member3, member4, wins,losses, xp, level, `rank`) VALUES('%u', '%c', '%s', '%u', '%u', '%u', '%u', '%u', '%d', '%d', '%d', '%d', '%d')", tab_prefix, team->teamid, team->size + '0', clienttag_uint_to_str(team->clienttag), (unsigned int)team->lastgame, team->teammembers[0], team->teammembers[1], team->teammembers[2], team->teammembers[3], team->wins, team->losses, team->xp, team->level, team->rank);
+ 				else
+-					std::snprintf(query, sizeof(query), "UPDATE %sarrangedteam SET size='%c', clienttag='%s', lastgame='%u', member1='%u', member2='%u', member3='%u', member4='%u', wins='%d', losses='%d', xp='%d', level='%d', rank='%d' WHERE teamid='%u'", tab_prefix, team->size + '0', clienttag_uint_to_str(team->clienttag), (unsigned int)team->lastgame, team->teammembers[0], team->teammembers[1], team->teammembers[2], team->teammembers[3], team->wins, team->losses, team->xp, team->level, team->rank, team->teamid);
++					std::snprintf(query, sizeof(query), "UPDATE %sarrangedteam SET size='%c', clienttag='%s', lastgame='%u', member1='%u', member2='%u', member3='%u', member4='%u', wins='%d', losses='%d', xp='%d', level='%d', `rank`='%d' WHERE teamid='%u'", tab_prefix, team->size + '0', clienttag_uint_to_str(team->clienttag), (unsigned int)team->lastgame, team->teammembers[0], team->teammembers[1], team->teammembers[2], team->teammembers[3], team->wins, team->losses, team->xp, team->level, team->rank, team->teamid);
+ 				eventlog(eventlog_level_trace, __FUNCTION__, "{}", query);
+ 				if (sql->query(query) < 0)
+ 				{
