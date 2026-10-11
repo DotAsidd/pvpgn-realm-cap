@@ -1,0 +1,19 @@
+======================================================
+         WELCOME TO DOTA & FRIENDS MULTIPLAYER
+======================================================
+
+  Website  : https://dotaandfriends.xyz
+  Discord  : https://discord.gg/tbE2dFNRWU
+  Gateway  : Port 6112 Active (Low Latency GProxy)
+
+------------------------------------------------------
+  COMMUNITY SERVER RULES:
+  1. Respect all players. No racism, hate, or griefing.
+  2. No maphacks, drop hacks, or third-party exploits.
+  3. Keep game handles clean and readable.
+  4. Leavers and game ruiners are permanently banned.
+------------------------------------------------------
+  Type // for server shortcuts (//web, //discord, //p).
+  Type /help to see Battle.net commands.
+  Enjoy classic DotA & Warcraft III custom games!
+======================================================
