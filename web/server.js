@@ -2219,13 +2219,11 @@ app.post("/api/register", async (req, res) => {
         console.log(`PvPGN account created: ${username} (uid ${uid}, locked until email verified), emailSent: ${emailSent}`);
 
         if (!emailSent) {
-            try {
-                await pool.execute("UPDATE pvpgn_BNET SET auth_lock = 'false' WHERE uid = ?", [uid]);
-            } catch (_) {}
             return res.status(201).json({
                 success: true,
-                emailSent: true,
-                message: "Account created and activated! You can now log in.",
+                emailSent: false,
+                error: "Account created, but email delivery failed. Please contact Discord support or use the resend verification option.",
+                message: "Account created, but email delivery failed. Please contact Discord support or use the resend verification option.",
                 devLink: link
             });
         }

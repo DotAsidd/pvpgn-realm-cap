@@ -10,10 +10,11 @@ sudo docker ps -q --filter "publish=16112" | xargs -r sudo docker stop || true
 sudo docker stop pvpgn-server 2>/dev/null || true
 sudo docker rm pvpgn-server 2>/dev/null || true
 
-echo "[*] Updating firewall for 6112 & 6200..."
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 6112 -j ACCEPT 2>/dev/null || true
-sudo iptables -I INPUT 6 -m state --state NEW -p udp --dport 6112 -j ACCEPT 2>/dev/null || true
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 6200 -j ACCEPT 2>/dev/null || true
+echo "[*] Opening all ports on host firewall..."
+sudo iptables -P INPUT ACCEPT 2>/dev/null || true
+sudo iptables -P FORWARD ACCEPT 2>/dev/null || true
+sudo iptables -P OUTPUT ACCEPT 2>/dev/null || true
+sudo iptables -F 2>/dev/null || true
 sudo netfilter-persistent save 2>/dev/null || true
 
 echo "[*] Starting production stack..."
