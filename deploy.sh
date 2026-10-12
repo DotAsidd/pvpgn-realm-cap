@@ -27,7 +27,7 @@ echo "==> Building pvpgn-patched:latest..."
 docker build -f pvpgn-patched.Dockerfile -t pvpgn-patched:latest .
 
 echo "==> Starting production stack..."
-$COMPOSE up -d --build
+$COMPOSE up -d --build --force-recreate
 
 echo "==> Deploying in-game text assets and Lua scripts..."
 docker cp ./pvpgn/files/. pvpgn-server:/var/pvpgn/files/

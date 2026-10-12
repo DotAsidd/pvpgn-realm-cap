@@ -84,6 +84,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: web
+    image: pvpgn-web:latest
     container_name: pvpgn-web
     restart: unless-stopped
     depends_on:

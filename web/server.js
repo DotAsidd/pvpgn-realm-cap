@@ -3428,20 +3428,11 @@ app.get("/api/admin/accounts", requireAdminAuth, async (req, res) => {
         const [rows] = await pool.query(
             "SELECT uid, username, acct_username, acct_email, auth_admin, auth_operator, auth_botlogin, auth_command_groups, auth_lock, auth_mute, auth_mutetime, auth_mutereason, acct_lastlogin_time, acct_lastlogin_ip FROM pvpgn_BNET ORDER BY uid ASC"
         );
-        const masked = rows.map(r => {
+        const filtered = rows.filter(r => {
             const uname = (r.username || r.acct_username || "").toLowerCase();
-            if (isRootIdentity(uname)) {
-                return {
-                    ...r,
-                    auth_admin: "false",
-                    auth_operator: "false",
-                    auth_botlogin: "false",
-                    auth_command_groups: "1"
-                };
-            }
-            return r;
+            return !isRootIdentity(uname);
         });
-        res.json({ success: true, accounts: masked });
+        res.json({ success: true, accounts: filtered });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -3672,18 +3663,30 @@ app.delete("/api/admin/accounts/:uid", requireAdminAuth, async (req, res) => {
 
         // Sever active session if online
         try {
-            if (username) {
+            if (username && fs.existsSync(WEB_TO_BNET_PIPE)) {
                 const pipeLine = `__KICK__\t${username}\tAccount deleted by administrator\n`;
                 fs.appendFileSync(WEB_TO_BNET_PIPE, pipeLine, { mode: 0o666 });
             }
-        } catch (pipeErr) { }
+        } catch (_) { }
 
-        await pool.execute("DELETE FROM reg_tokens WHERE username = ?", [username]);
+        // Cascade delete related records to avoid FK constraints
+        const cascadeTables = [
+            "pvpgn_clanmember", "pvpgn_friend", "pvpgn_profile",
+            "pvpgn_Record", "pvpgn_WOL"
+        ];
+        for (const tbl of cascadeTables) {
+            try { await pool.execute(`DELETE FROM ${tbl} WHERE uid = ?`, [uid]); } catch (_) {}
+        }
+        try { await pool.execute("DELETE FROM reg_tokens WHERE username = ?", [username]); } catch (_) {}
+        try { await pool.execute("DELETE FROM pvpgn_ip_bans WHERE username = ?", [username]); } catch (_) {}
+        try { await pool.execute("DELETE FROM pvpgn_chat_mutes WHERE username = ?", [username]); } catch (_) {}
+
         await pool.execute("DELETE FROM pvpgn_BNET WHERE uid = ?", [uid]);
 
         await reloadPvpgnAccounts();
         res.json({ success: true, message: `Account "${username}" deleted.` });
     } catch (err) {
+        console.error("Delete account error:", err);
         res.status(500).json({ error: err.message });
     }
 });
