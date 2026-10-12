@@ -51,7 +51,7 @@ esac
 
 echo "==> Setting role '$ROLE' (admin=$ADMIN, op=$OP, groups=$CMD_GROUPS) for: $TARGET_USER"
 
-docker exec -i pvpgn-mysql mysql -uroot -psiddnoob pvpgn <<EOF
+docker exec -i pvpgn-mysql mysql -uroot -p${MYSQL_PASSWORD} pvpgn <<EOF
 UPDATE pvpgn_BNET 
 SET auth_admin = '${ADMIN}', 
     auth_operator = '${OP}', 

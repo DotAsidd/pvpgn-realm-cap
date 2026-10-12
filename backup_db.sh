@@ -18,7 +18,7 @@ if ! docker ps --format '{{.Names}}' | grep -q '^pvpgn-mysql$'; then
 fi
 
 # Run mysqldump from mysql container
-docker exec pvpgn-mysql mysqldump -uroot -psiddnoob --all-databases --single-transaction --quick > "$BACKUP_FILE"
+docker exec pvpgn-mysql mysqldump -uroot -p${MYSQL_PASSWORD} --all-databases --single-transaction --quick > "$BACKUP_FILE"
 
 # Compress backup
 gzip -f "$BACKUP_FILE"

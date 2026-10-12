@@ -13,7 +13,7 @@ fi
 BOT_USER="$1"
 echo "==> Granting bot & operator permissions to: $BOT_USER"
 
-docker exec -i pvpgn-mysql mysql -uroot -psiddnoob pvpgn <<EOF
+docker exec -i pvpgn-mysql mysql -uroot -p${MYSQL_PASSWORD} pvpgn <<EOF
 UPDATE pvpgn_BNET 
 SET auth_botlogin = 'true', 
     auth_operator = 'true', 

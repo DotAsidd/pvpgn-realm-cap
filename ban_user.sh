@@ -21,7 +21,7 @@ fi
 case "$ACTION" in
     ban)
         echo "==> Banning user: $TARGET_USER (Reason: $REASON)"
-        docker exec -i pvpgn-mysql mysql -uroot -psiddnoob pvpgn <<EOF
+        docker exec -i pvpgn-mysql mysql -uroot -p${MYSQL_PASSWORD} pvpgn <<EOF
 UPDATE pvpgn_BNET 
 SET auth_lock = 'true', 
     auth_lockreason = '${REASON}', 
@@ -40,7 +40,7 @@ EOF
 
     unban)
         echo "==> Unbanning user: $TARGET_USER"
-        docker exec -i pvpgn-mysql mysql -uroot -psiddnoob pvpgn <<EOF
+        docker exec -i pvpgn-mysql mysql -uroot -p${MYSQL_PASSWORD} pvpgn <<EOF
 UPDATE pvpgn_BNET 
 SET auth_lock = 'false', 
     auth_lockreason = NULL, 

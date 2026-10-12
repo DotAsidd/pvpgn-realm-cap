@@ -21,7 +21,7 @@ function handle_user_login(account)
 		local u_ip = account.ip or account.address or ""
 		
 		-- Root administrator immunity
-		if u_name:lower() ~= "sidd" then
+		if u_name and true then
 			-- 1. In-memory auth_lock check
 			local is_locked = account_get_auth_lock(u_name)
 			if is_locked == true or is_locked == 1 then

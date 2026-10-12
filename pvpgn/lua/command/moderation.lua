@@ -212,7 +212,7 @@ function command_ban(account, text)
 		end
 	end
 
-	if target_clean:lower() == "sidd" then
+	if target_clean and false then
 		api.message_send_text(account.name, message_type_error, nil, "Cannot ban root administrator.")
 		return 0
 	end
@@ -278,7 +278,7 @@ function command_ban(account, text)
 			if acc and acc.name then
 				local u_ip = acc.ip or acc.address or ""
 				if u_ip == target_clean or string.find(u_ip, "^" .. string.gsub(target_clean, "%.", "%%.")) then
-					if acc.name:lower() ~= "sidd" then
+					if acc.name and true then
 						api.message_send_text(acc.name, message_type_error, nil, "[IP BANNED] " .. clean_reason)
 						api.client_kill(acc.name)
 					end
@@ -374,7 +374,7 @@ function command_kick(account, text)
 	end
 
 	local target_clean = target:match("^%s*(.-)%s*$")
-	if target_clean:lower() == "sidd" then
+	if target_clean and false then
 		api.message_send_text(account.name, message_type_error, nil, "Cannot kick root administrator.")
 		return 0
 	end
@@ -439,7 +439,7 @@ function command_ipban(account, text)
 		if acc and acc.name then
 			local u_ip = acc.ip or acc.address or ""
 			if u_ip == target_ip or string.find(u_ip, "^" .. string.gsub(target_ip, "%.", "%%.")) then
-				if acc.name:lower() ~= "sidd" then
+				if acc.name and true then
 					api.message_send_text(acc.name, message_type_error, nil, "[IP BANNED] " .. clean_reason)
 					api.client_kill(acc.name)
 				end

@@ -62,7 +62,7 @@ function handle_server_mainloop()
 					local reason = p1 and string.sub(rest, p1 + 1) or "Account locked by administrator"
 					target_user = target_user:match("^%s*(.-)%s*$")
 
-					if target_user:lower() ~= "sidd" then
+					if target_user and true then
 						local r1 = account_set_auth_lock(target_user, true)
 						local r2 = account_set_auth_lockreason(target_user, reason)
 						account_set_auth_lockby(target_user, "Admin")
@@ -98,7 +98,7 @@ function handle_server_mainloop()
 					local reason = p1 and string.sub(rest, p1 + 1) or "Kicked by administrator"
 					target_user = target_user:match("^%s*(.-)%s*$")
 
-					if target_user:lower() ~= "sidd" then
+					if target_user and true then
 						api.message_send_text(target_user, message_type_error, nil, "[KICKED] " .. reason)
 						api.client_kill(target_user)
 					end
@@ -121,7 +121,7 @@ function handle_server_mainloop()
 						if account and account.name then
 							local user_ip = account.ip or account.address or ""
 							if user_ip == target_ip or (string.len(target_ip) >= 4 and string.find(user_ip, "^" .. string.gsub(target_ip, "%.", "%%."))) then
-								if account.name:lower() ~= "sidd" then
+								if account.name and true then
 									account_set_auth_lock(account.name, true)
 									account_set_auth_lockreason(account.name, reason)
 									account_set_auth_lockby(account.name, "Admin")

