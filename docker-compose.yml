@@ -55,6 +55,8 @@ services:
     ports:
       - "6112:6112/tcp"
       - "6112:6112/udp"
+      - "6113-6119:6113-6119/tcp"
+      - "6113-6119:6113-6119/udp"
       - "6200:6200/tcp"
     volumes:
       - ./pvpgn/etc:/etc/pvpgn
