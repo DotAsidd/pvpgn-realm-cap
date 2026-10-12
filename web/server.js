@@ -17,6 +17,68 @@ const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+
+// Pure JS implementation of PvPGN Battle.net v1.0 SHA-1 hash (cross-platform, ARM64 & x86_64)
+function pvpgn_hash(str) {
+    str = String(str || "").toLowerCase();
+    const nblk = ((str.length + 8) >> 6) + 1;
+    const blks = new Array(nblk * 16).fill(0);
+    for (let i = 0; i < str.length; i++) {
+        blks[i >> 2] |= str.charCodeAt(i) << ((i % 4) * 8);
+    }
+    const safe_add = (x, y) => ((x & 0xFFFFFFFF) + (y & 0xFFFFFFFF)) | 0;
+    const safe_rol = (num, amt) => ((num << amt) | (num >>> (32 - amt))) | 0;
+    const ft = (t, b, c, d) => {
+        if (t < 20) return (b & c) | ((~b) & d);
+        if (t < 40) return d ^ c ^ b;
+        if (t < 60) return (c & b) | (d & c) | (d & b);
+        return d ^ c ^ b;
+    };
+    const kt = (t) => {
+        if (t < 20) return 0x5a827999 | 0;
+        if (t < 40) return 0x6ed9eba1 | 0;
+        if (t < 60) return 0x8f1bbcdc | 0;
+        return 0xca62c1d6 | 0;
+    };
+
+    let a = 0x67452301 | 0, b = 0xefcdab89 | 0, c = 0x98badcfe | 0, d = 0x10325476 | 0, e = 0xc3d2e1f0 | 0;
+    for (let i = 0; i < blks.length; i += 16) {
+        const olda = a, oldb = b, oldc = c, oldd = d, olde = e;
+        const w = new Array(80).fill(0);
+        for (let j = 0; j < 16; j++) w[j] = blks[i + j];
+        for (let j = 0; j < 64; j++) {
+            const ww = w[j] ^ w[j + 8] ^ w[j + 2] ^ w[j + 13];
+            w[j + 16] = (1 << (ww >>> 0 % 32)) | 0;
+        }
+        for (let j = 0; j < 80; j++) {
+            const t = safe_add(safe_add(safe_rol(a, 5), ft(j, b, c, d)), safe_add(safe_add(e, w[j]), kt(j)));
+            e = d;
+            d = c;
+            c = safe_rol(b, 30);
+            b = a;
+            a = t;
+        }
+        a = safe_add(a, olda);
+        b = safe_add(b, oldb);
+        c = safe_add(c, oldc);
+        d = safe_add(d, oldd);
+        e = safe_add(e, olde);
+    }
+    const toHex = (n) => ((n >>> 0).toString(16).padStart(8, "0"));
+    return toHex(a) + toHex(b) + toHex(c) + toHex(d) + toHex(e);
+}
+
+async function getBnPassHash(password) {
+    try {
+        if (fs.existsSync("/usr/local/bin/bnpass")) {
+            const { stdout } = await execFileAsync("/usr/local/bin/bnpass", [password]);
+            const match = stdout.match(/"BNET\\\\acct\\\\passhash1"="([a-fA-F0-9]{40})"/);
+            if (match) return match[1];
+        }
+    } catch (_) {}
+    return pvpgn_hash(password);
+}
+
 const app = express();
 app.set("trust proxy", 1);
 
@@ -670,6 +732,17 @@ async function initChatTables() {
                 INDEX idx_ip (ip_address),
                 INDEX idx_user (username)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS reg_tokens (
+                username VARCHAR(32) NOT NULL,
+                kind VARCHAR(16) NOT NULL,
+                token VARCHAR(64) NOT NULL,
+                expires_ts BIGINT NOT NULL,
+                PRIMARY KEY (username, kind),
+                INDEX idx_reg_tokens_token (token)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         `);
 
         // Seed in-memory buffer from database on startup so history persists across restarts
@@ -2122,26 +2195,7 @@ app.post("/api/register", async (req, res) => {
         // Hash the password with bnpass
         // -----------------------------
 
-        const { stdout } = await execFileAsync(
-            "/usr/local/bin/bnpass",
-            [password]
-        );
-
-        const match = stdout.match(/"BNET\\\\acct\\\\passhash1"="([a-fA-F0-9]{40})"/);
-
-        if (!match) {
-
-            console.error("Unexpected bnpass output:", stdout);
-
-            return res.status(500).json({
-                success: false,
-                error: "Server error while creating the account. Please try again.",
-                message: "Server error while creating the account. Please try again."
-            });
-
-        }
-
-        const passhash = match[1];
+        const passhash = await getBnPassHash(password);
 
         // -----------------------------
         // Create the account (locked until email verified)
@@ -3344,12 +3398,11 @@ app.post("/admin/login", async (req, res) => {
         } else {
             // Also accept individual Battle.net account password hash from DB
             try {
-                const { stdout } = await execFileAsync("/usr/local/bin/bnpass", [password]);
-                const match = stdout.match(/"BNET\\\\acct\\\\passhash1"="([a-fA-F0-9]{40})"/);
-                if (match) {
+                const passhash = await getBnPassHash(password);
+                if (passhash) {
                     const [rows] = await pool.query(
                         "SELECT username FROM pvpgn_BNET WHERE acct_passhash1 = ? AND (LOWER(username) = ? OR LOWER(acct_username) = ?) LIMIT 1",
-                        [match[1], lowerUser, lowerUser]
+                        [passhash, lowerUser, lowerUser]
                     );
                     if (rows.length > 0) {
                         authenticated = true;
@@ -3371,13 +3424,12 @@ app.post("/admin/login", async (req, res) => {
     // 3. Delegated Staff Members with auth_admin='true' (e.g. "guard")
     else {
         try {
-            const { stdout } = await execFileAsync("/usr/local/bin/bnpass", [password]);
-            const match = stdout.match(/"BNET\\\\acct\\\\passhash1"="([a-fA-F0-9]{40})"/);
-            if (match) {
-                const [rows] = await pool.query(
-                    "SELECT username FROM pvpgn_BNET WHERE acct_passhash1 = ? AND (LOWER(username) = ? OR LOWER(acct_username) = ?) AND auth_admin = 'true' LIMIT 1",
-                    [match[1], lowerUser, lowerUser]
-                );
+            const passhash = await getBnPassHash(password);
+                if (passhash) {
+                    const [rows] = await pool.query(
+                        "SELECT username FROM pvpgn_BNET WHERE acct_passhash1 = ? AND (LOWER(username) = ? OR LOWER(acct_username) = ?) AND auth_admin = 'true' LIMIT 1",
+                        [passhash, lowerUser, lowerUser]
+                    );
                 if (rows.length > 0) {
                     authenticated = true;
                     adminName = rows[0].username;
@@ -3454,9 +3506,7 @@ app.post("/api/admin/accounts/create", requireAdminAuth, async (req, res) => {
             return res.status(409).json({ error: "Username already exists." });
         }
 
-        const { stdout } = await execFileAsync("/usr/local/bin/bnpass", [password]);
-        const match = stdout.match(/"BNET\\\\acct\\\\passhash1"="([a-fA-F0-9]{40})"/);
-        if (!match) return res.status(500).json({ error: "Password hashing failed." });
+        const passhash = await getBnPassHash(password);
 
         const [uidRows] = await pool.query("SELECT COALESCE(MAX(uid), 0) + 1 AS next_uid FROM pvpgn_BNET");
         const uid = uidRows[0].next_uid;
@@ -3521,14 +3571,8 @@ app.post("/api/admin/accounts/password", requireAdminAuth, async (req, res) => {
             return res.json({ success: true, message: "Password updated successfully." });
         }
 
-        const { stdout } = await execFileAsync("/usr/local/bin/bnpass", [password]);
-        const match = stdout.match(/"BNET\\\\acct\\\\passhash1"="([a-fA-F0-9]{40})"/);
-        if (!match) return res.status(500).json({ error: "Password hashing failed." });
-
-        await pool.execute(
-            "UPDATE pvpgn_BNET SET acct_passhash1 = ? WHERE uid = ?",
-            [match[1], uid]
-        );
+        const passhash = await getBnPassHash(password);
+        await pool.execute("UPDATE pvpgn_BNET SET acct_passhash1 = ? WHERE uid = ?", [passhash, uid]);
 
         await reloadPvpgnAccounts();
         res.json({ success: true, message: "Password updated successfully." });

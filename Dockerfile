@@ -7,7 +7,6 @@ FROM node:22-alpine AS web
 
 WORKDIR /app
 
-COPY --from=wwmoraes/pvpgn-server:latest-mysql /bin/bnpass /usr/local/bin/bnpass
 
 COPY web/package.json .
 

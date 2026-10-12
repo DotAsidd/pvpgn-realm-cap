@@ -58,6 +58,7 @@ services:
       - "6200:6200/tcp"
     volumes:
       - ./pvpgn/etc:/etc/pvpgn
+      - ./pvpgn/files:/var/pvpgn/files
       - pvpgn_data:/var/pvpgn
       - ./pvpgn/lua:/var/pvpgn/lua
       - ./mysql-ca.pem:/etc/ssl/mysql-ca.pem:ro
