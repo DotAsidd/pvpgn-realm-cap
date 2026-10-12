@@ -1,6 +1,7 @@
 services:
 
   mysql:
+    platform: linux/arm64
     image: mysql:8.0
     container_name: pvpgn-mysql
     restart: unless-stopped
@@ -46,9 +47,12 @@ services:
         max-file: "3"
 
   pvpgn:
+    platform: linux/arm64
     build:
       context: .
       dockerfile: pvpgn-patched.Dockerfile
+      platforms:
+        - linux/arm64
     image: pvpgn-patched:latest
     container_name: pvpgn-server
     restart: unless-stopped
@@ -80,10 +84,13 @@ services:
         max-file: "3"
 
   web:
+    platform: linux/arm64
     build:
       context: .
       dockerfile: Dockerfile
       target: web
+      platforms:
+        - linux/arm64
     image: pvpgn-web:latest
     container_name: pvpgn-web
     restart: unless-stopped
@@ -125,6 +132,7 @@ services:
         max-file: "3"
 
   caddy:
+    platform: linux/arm64
     image: caddy:latest
     container_name: pvpgn-caddy
     restart: unless-stopped

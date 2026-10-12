@@ -23,8 +23,11 @@ if [ -f .env ]; then
     fi
 fi
 
-echo "==> Building pvpgn-patched:latest..."
-docker build -f pvpgn-patched.Dockerfile -t pvpgn-patched:latest .
+echo "==> Building pvpgn-patched:latest (linux/arm64)..."
+docker build --platform linux/arm64 -f pvpgn-patched.Dockerfile -t pvpgn-patched:latest .
+
+echo "==> Building pvpgn-web:latest (linux/arm64)..."
+docker build --platform linux/arm64 -f Dockerfile --target web -t pvpgn-web:latest .
 
 echo "==> Starting production stack..."
 $COMPOSE up -d --build --force-recreate
