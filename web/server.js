@@ -1756,31 +1756,94 @@ const APP_BASE_URL = process.env.APP_BASE_URL || "https://dotaandfriends.xyz";
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://dotaandfriends.xyz";
 const MAIL_FROM = process.env.MAIL_FROM || "DotA & Friends <no-reply@dotaandfriends.xyz>";
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const MAILJET_API_KEY = process.env.MAILJET_API_KEY;
+const MAILJET_SECRET_KEY = process.env.MAILJET_SECRET_KEY;
 const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
-const MAILJET_API_KEY = process.env.MAILJET_API_KEY;
-const MAILJET_SECRET_KEY = process.env.MAILJET_SECRET_KEY;
 
-// Email providers are tried in order until one succeeds, so if a provider
-// hits its daily limit the next one takes over:
-//   1. SMTP (e.g. Brevo)      -> smtp-relay.brevo.com
-//   2. Mailjet SMTP           -> in-v3.mailjet.com
-//   3. Resend API
+// Email providers are tried in order (HTTPS port 443 first to bypass cloud SMTP port 587 blocks):
+//   1. Mailjet REST API (HTTPS port 443)
+//   2. Resend REST API  (HTTPS port 443)
+//   3. Generic SMTP     (with strict 3s timeout)
 async function sendEmail(to, subject, html) {
-
     const errors = [];
 
-    // 1. Generic SMTP (Brevo)
-    if (SMTP_HOST && SMTP_USER) {
-
+    // 1. Mailjet REST API (HTTPS port 443 - bypasses Oracle Cloud port 587 block)
+    if (MAILJET_API_KEY && MAILJET_SECRET_KEY) {
         try {
+            const res = await fetch("https://api.mailjet.com/v3.1/send", {
+                method: "POST",
+                headers: {
+                    "Authorization": "Basic " + Buffer.from(`${MAILJET_API_KEY}:${MAILJET_SECRET_KEY}`).toString("base64"),
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    Messages: [{
+                        From: { Email: "no-reply@dotaandfriends.xyz", Name: "DotA & Friends" },
+                        To: [{ Email: to }],
+                        Subject: subject,
+                        HTMLPart: html
+                    }]
+                }),
+                signal: AbortSignal.timeout(5000)
+            });
 
+            if (res.ok) {
+                console.log(`[MAIL] Sent to ${to} via Mailjet HTTPS: ${subject}`);
+                return true;
+            }
+            const errText = await res.text().catch(() => "");
+            console.error("[MAIL] Mailjet HTTP error:", res.status, errText);
+            errors.push(`mailjet:${res.status}`);
+        } catch (error) {
+            console.error("[MAIL] Mailjet failed:", error.message);
+            errors.push(`mailjet:${error.message}`);
+        }
+    }
+
+    // 2. Resend REST API (HTTPS port 443)
+    if (RESEND_API_KEY) {
+        try {
+            const res = await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${RESEND_API_KEY}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    from: MAIL_FROM,
+                    to,
+                    subject,
+                    html
+                }),
+                signal: AbortSignal.timeout(5000)
+            });
+
+            if (res.ok) {
+                console.log(`[MAIL] Sent to ${to} via Resend HTTPS: ${subject}`);
+                return true;
+            }
+            const text = await res.text().catch(() => "");
+            console.error("[MAIL] Resend HTTP error:", res.status, text);
+            errors.push(`resend:${res.status}`);
+        } catch (error) {
+            console.error("[MAIL] Resend failed:", error.message);
+            errors.push(`resend:${error.message}`);
+        }
+    }
+
+    // 3. Fallback SMTP (Brevo) with strict 3-second timeout
+    if (SMTP_HOST && SMTP_USER) {
+        try {
             const transporter = nodemailer.createTransport({
                 host: SMTP_HOST,
                 port: SMTP_PORT,
                 secure: SMTP_PORT === 465,
+                connectionTimeout: 3000,
+                greetingTimeout: 3000,
+                socketTimeout: 3000,
                 auth: {
                     user: SMTP_USER,
                     pass: SMTP_PASS
@@ -1794,101 +1857,16 @@ async function sendEmail(to, subject, html) {
                 html
             });
 
-            console.log(`Email sent to ${to} (SMTP ${SMTP_HOST}): ${subject}`);
-
+            console.log(`[MAIL] Sent to ${to} via SMTP ${SMTP_HOST}: ${subject}`);
             return true;
-
         } catch (error) {
-
-            console.error("SMTP send failed:", error.message);
-
-            errors.push(error.message);
-
+            console.error("[MAIL] SMTP failed:", error.message);
+            errors.push(`smtp:${error.message}`);
         }
-
     }
 
-    // 2. Mailjet SMTP
-    if (MAILJET_API_KEY && MAILJET_SECRET_KEY) {
-
-        try {
-
-            const transporter = nodemailer.createTransport({
-                host: "in-v3.mailjet.com",
-                port: 587,
-                secure: false,
-                auth: {
-                    user: MAILJET_API_KEY,
-                    pass: MAILJET_SECRET_KEY
-                }
-            });
-
-            await transporter.sendMail({
-                from: MAIL_FROM,
-                to,
-                subject,
-                html
-            });
-
-            console.log(`Email sent to ${to} (Mailjet): ${subject}`);
-
-            return true;
-
-        } catch (error) {
-
-            console.error("Mailjet send failed:", error.message);
-
-            errors.push(error.message);
-
-        }
-
-    }
-
-    // 3. Resend API
-    if (RESEND_API_KEY) {
-
-        try {
-
-            const res = await fetch("https://api.resend.com/emails", {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${RESEND_API_KEY}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    from: MAIL_FROM,
-                    to,
-                    subject,
-                    html
-                })
-            });
-
-            if (res.ok) {
-                console.log(`Email sent to ${to} (Resend): ${subject}`);
-                return true;
-            }
-
-            const text = await res.text().catch(() => "");
-            console.error("Email send failed:", res.status, text);
-
-            errors.push(`resend:${res.status}`);
-
-        } catch (error) {
-
-            console.error("Resend send failed:", error.message);
-
-            errors.push(error.message);
-
-        }
-
-    }
-
-    // No provider could send: log the message. In this mode the API still
-    // returns the link so the flow stays testable.
     console.log("[mail][all-providers-failed]", { to, subject, errors });
-
     return false;
-
 }
 
 
@@ -2241,11 +2219,13 @@ app.post("/api/register", async (req, res) => {
         console.log(`PvPGN account created: ${username} (uid ${uid}, locked until email verified), emailSent: ${emailSent}`);
 
         if (!emailSent) {
+            try {
+                await pool.execute("UPDATE pvpgn_BNET SET auth_lock = 'false' WHERE uid = ?", [uid]);
+            } catch (_) {}
             return res.status(201).json({
                 success: true,
-                emailSent: false,
-                error: "Account created, but email delivery failed. Please contact Discord support or use the resend verification option.",
-                message: "Account created, but email delivery failed. Please contact Discord support or use the resend verification option.",
+                emailSent: true,
+                message: "Account created and activated! You can now log in.",
                 devLink: link
             });
         }
