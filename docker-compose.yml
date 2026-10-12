@@ -46,12 +46,18 @@ services:
         max-file: "3"
 
   pvpgn:
+    build:
+      context: .
+      dockerfile: pvpgn-patched.Dockerfile
     image: pvpgn-patched:latest
     container_name: pvpgn-server
     restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
+    environment:
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      SERVER_PUBLIC_IP: ${SERVER_PUBLIC_IP:-138.2.71.11}
     ports:
       - "6112:6112/tcp"
       - "6112:6112/udp"

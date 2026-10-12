@@ -1,6 +1,5 @@
 # ============================================================
 # NODE.JS REGISTRATION WEBSITE
-# bnpass binary copied from the wwmoraes prebuilt PvPGN image
 # ============================================================
 
 FROM node:22-alpine AS web

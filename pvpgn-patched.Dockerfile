@@ -10,6 +10,7 @@ RUN apk --quiet --no-cache add \
   zlib-dev \
   curl-dev \
   lua-dev \
+  patch \
   && rm -rf /var/cache/apk/*
 
 ARG REPO=https://github.com/pvpgn/pvpgn-server.git
@@ -52,7 +53,7 @@ RUN cmake -G "Unix Makefiles" -H./ -B./build \
   -D WITH_ODBC=${WITH_ODBC} \
   -D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -D CMAKE_INSTALL_PREFIX=/ \
-  ../ && cd build && make
+  && cd build && make -j$(nproc)
 
 ################################################################################
 FROM build-mysql AS build
@@ -103,7 +104,10 @@ VOLUME /etc/pvpgn
 
 EXPOSE 6112 4000
 
+COPY pvpgn-entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
+
 USER 1001:1001
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bnetd", "-f"]
-ENTRYPOINT ["bnetd"]

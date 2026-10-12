@@ -18,7 +18,7 @@ sudo iptables -F 2>/dev/null || true
 sudo netfilter-persistent save 2>/dev/null || true
 
 echo "[*] Starting production stack..."
-sudo docker compose up -d
+sudo docker compose up -d --build
 
 echo "[+] Active ports:"
 sudo ss -tulpn | grep -E '6112|6200'

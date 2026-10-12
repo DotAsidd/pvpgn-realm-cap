@@ -14,6 +14,15 @@ else
     COMPOSE="docker-compose"
 fi
 
+chmod +x ./pvpgn-entrypoint.sh ./backup_db.sh ./set_bot.sh ./set_admin.sh ./ban_user.sh ./set_role.sh ./fix_ports_6112.sh
+
+if [ -f .env ]; then
+    MYSQL_PASS=$(grep -E '^MYSQL_PASSWORD=' .env | cut -d '=' -f2- | tr -d '"'\''\r')
+    if [ -n "$MYSQL_PASS" ] && [ -f ./pvpgn/etc/bnetd.conf ]; then
+        sed -i "s|pass=[^;]*;|pass=${MYSQL_PASS};|g" ./pvpgn/etc/bnetd.conf
+    fi
+fi
+
 echo "==> Building pvpgn-patched:latest..."
 docker build -f pvpgn-patched.Dockerfile -t pvpgn-patched:latest .
 
